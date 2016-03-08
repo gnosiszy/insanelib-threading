@@ -4,7 +4,7 @@ using System.Threading;
 
 namespace InsaneLibrary.Threading
 {
-	public sealed class Dispatcher : SimpleDispatcher
+	public sealed class Dispatcher : BaseDispatcher
 	{
 		readonly static private object _sync = new object();
 		readonly static private IDictionary<WeakReference, Dispatcher> _dispatcherList = new Dictionary<WeakReference, Dispatcher>(new WeakThreadComparer());

@@ -1,16 +1,14 @@
 ﻿using InsaneLibrary.Threading;
 using System;
 using System.Threading;
-using UnityEngine;
 
 namespace InsanePluginLibrary.Threading
 {
-	sealed public class AsyncWorker : MonoBehaviour
+	sealed public class AsyncWorker : Worker
 	{
 		readonly private EventWaitHandle _handle;
-
-		readonly private WeakReference _dispatcher;
 		readonly private Thread _thread;
+		readonly WeakReference _dispatcher;
 
 		public AsyncWorker()
 		{
@@ -23,9 +21,14 @@ namespace InsanePluginLibrary.Threading
 			_dispatcher = new WeakReference(_thread.GetDispatcher());
 		}
 
-		public SimpleDispatcher Dispatcher
+		protected override EventWaitHandle Handle
 		{
-			get { return _dispatcher.Target as SimpleDispatcher; }
+			get { return _handle; }
+		}
+
+		public override BaseDispatcher Dispatcher
+		{
+			get { return _dispatcher.Target as BaseDispatcher; }
 		}
 
 		private void Listener()
@@ -34,7 +37,7 @@ namespace InsanePluginLibrary.Threading
 
 			try
 			{
-				while (dispatcher.Wait() && _handle.WaitOne())
+				while (dispatcher.Wait() && Handle.WaitOne())
 				{
 					dispatcher.DispatchEntry();
 				}
@@ -53,28 +56,11 @@ namespace InsanePluginLibrary.Threading
 			_thread.Start();
 		}
 
-		private void OnEnable()
-		{
-			_handle.Set();
-		}
-
-		private void OnDisable()
-		{
-			_handle.Reset();
-		}
-
-		private void OnDestroy()
+		override protected void OnDestroy()
 		{
 			_thread.Abort();
 
-			_handle.Reset();
-
-			var disposable = _handle as IDisposable;
-
-			if (disposable != null)
-			{
-				disposable.Dispose();
-			}
+			base.OnDestroy();
 		}
 	}
 }

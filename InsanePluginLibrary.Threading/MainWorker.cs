@@ -6,22 +6,22 @@ using UnityEngine;
 
 namespace InsanePluginLibrary.Threading
 {
-	sealed public class MainThread : MonoBehaviour
+	sealed public class MainWorker : Worker
 	{
 		private const string DEFAULT_GAMEOBJECT_NAME = "_MAIN_THREAD_HELPER";
 
 		readonly static private object _sync = new object();
-		static private MainThread _current;
+		static private MainWorker _current;
 
 		readonly private EventWaitHandle _handle;
 
-		readonly private SimpleDispatcher _dispatcher;
+		readonly private BaseDispatcher _dispatcher;
 		readonly private Stopwatch _watcher;
 
 		[SerializeField]
-		private float _timeout = float.MaxValue;
+		private float _timeout = 0xFF;
 
-		public MainThread()
+		public MainWorker()
 		{
 			if (!IsOnMainThread())
 			{
@@ -32,26 +32,36 @@ namespace InsanePluginLibrary.Threading
 			_dispatcher = new MainDispatcher();
 			_watcher = new Stopwatch();
 
-			if (Current != null)
+			MainWorker current;
+
+			lock (_sync)
 			{
-				Destroy(Current);
+				current = _current;
+				_current = this;
 			}
 
-			Current = this;
+			if (current != null)
+			{
+				Destroy(current);
+			}
 		}
 
-		static public MainThread Current
+		static public MainWorker Current
 		{
 			get { lock (_sync) return _current; }
-			private set { lock (_sync) _current = value; }
 		}
 
-		static public SimpleDispatcher CurrentDispatcher
+		static public BaseDispatcher CurrentDispatcher
 		{
-			get { return Current.Dispatcher; }
+			get { lock (_sync) return _current != null ? _current.Dispatcher : null; }
 		}
 
-		public SimpleDispatcher Dispatcher
+		protected override EventWaitHandle Handle
+		{
+			get { return _handle; }
+		}
+
+		override public BaseDispatcher Dispatcher
 		{
 			get { return _dispatcher; }
 		}
@@ -66,7 +76,7 @@ namespace InsanePluginLibrary.Threading
 		{
 			try
 			{
-				gameObject.AddComponent<MainThread>();
+				gameObject.AddComponent<MainWorker>();
 			}
 			catch
 			{
@@ -93,29 +103,13 @@ namespace InsanePluginLibrary.Threading
 
 		static internal bool IsOnMainThread()
 		{
-			var thread = Thread.CurrentThread;
-
-			return (
-				thread.GetApartmentState() == ApartmentState.Unknown &&
-				thread.ManagedThreadId == 1 &&
-				!thread.IsBackground &&
-				!thread.IsThreadPoolThread);
+			return MainDispatcher.IsOnMainThread();
 		}
 
 		private void Awake()
 		{
 			DontDestroyOnLoad(this);
 			DontDestroyOnLoad(gameObject);
-		}
-
-		private void OnEnable()
-		{
-			_handle.Set();
-		}
-
-		private void OnDisable()
-		{
-			_handle.Reset();
 		}
 
 		private void Update()
@@ -128,18 +122,17 @@ namespace InsanePluginLibrary.Threading
 			while (dispatcher.DispatchEntry() && _watcher.Elapsed < Timeout) { }
 		}
 
-		private void OnDestroy()
+		override protected void OnDestroy()
 		{
-			_handle.Reset();
+			base.OnDestroy();
 
-			var disposable = _handle as IDisposable;
-
-			if (disposable != null)
+			lock (_sync)
 			{
-				disposable.Dispose();
+				if (_current == this)
+				{
+					_current = null;
+				}
 			}
-
-			Current = null;
 		}
 	}
 }
